@@ -4,12 +4,14 @@ import Tests._
 
 object SLICKBuild extends Build {
 
+  /////////////////////////////////////////////////////////////// Main project
+
   /* Custom Settings */
   val useJDBC4 = SettingKey[Boolean]("use-jdbc4", "Use JDBC 4 (Java 1.6+) or JDBC 3 (Java 1.5)")
   val repoKind = SettingKey[String]("repo-kind", "Maven repository kind (\"snapshots\" or \"releases\")")
 
   /* Project Definition */
-  lazy val root = Project(id = "slick", base = file("."),
+  lazy val mainProject = Project(id = "slick", base = file("."),
     settings = Project.defaultSettings ++ fmppSettings ++ Seq(
       useJDBC4 := (
         try { classOf[java.sql.DatabaseMetaData].getMethod("getClientInfoProperties"); true }
@@ -57,5 +59,36 @@ object SLICKBuild extends Build {
         (output ** "*.scala").get.toSet
       }
       cachedFun(inFiles).toSeq
+    }
+
+  /////////////////////////////////////////////////////////////// Docs project
+
+  /* Project Definition */
+  lazy val docsProject = Project(id = "slick-docs", base = file("slick-docs"),
+    settings = Project.defaultSettings ++ rstSettings)
+
+  /* RST Task */
+  lazy val rst = TaskKey[Seq[File]]("rst")
+  lazy val rstConfig = config("rst") hide
+  lazy val rstSettings = inConfig(Compile)(Seq(sourceGenerators <+= rst, rst <<= rstTask)) ++ Seq(
+    libraryDependencies += "org.nuiton.jrst" % "jrst" % "1.5" % rstConfig.name,
+    ivyConfigurations += rstConfig,
+    fullClasspath in rstConfig <<= update map { _ select configurationFilter(rstConfig.name) map Attributed.blank }
+  )
+  lazy val rstTask =
+    (fullClasspath in rstConfig, runner in rst, target, streams, cacheDirectory, sourceDirectory) map { (cp, r, target, s, cache, srcDir) =>
+      val rstSrc = srcDir / "rst"
+      val output = target / "rst"
+      output.mkdirs
+      val inFiles = (rstSrc ** "*.rst" get).toSet
+      IO.delete(output ** "*.html" get)
+      IO.delete(output ** "*.pdf" get)
+      inFiles.foreach { inFile =>
+        val args1 = "--force" :: "-t" :: "html" :: "-o" :: (output / inFile.getName.replaceAll("\\.rst$", ".html")).getPath :: inFile.getPath :: Nil
+        val args2 = "--force" :: "-t" :: "pdf" :: "-o" :: (output / inFile.getName.replaceAll("\\.rst$", ".pdf")).getPath :: inFile.getPath :: Nil
+        toError(r.run("org.nuiton.jrst.JRST", cp.files, args1, s.log))
+        toError(r.run("org.nuiton.jrst.JRST", cp.files, args2, s.log))
+      }
+      ((output ** "*.html").get ++ (output ** "*.pdf").get).toSeq
     }
 }
