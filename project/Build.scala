@@ -16,7 +16,14 @@ object SLICKBuild extends Build {
       scalacOptions in doc <++= (version).map(v => Seq("-doc-title", "SLICK", "-doc-version", v)),
       makePomConfiguration ~= { _.copy(configurations = Some(Seq(Compile, Runtime))) },
       includeFilter in Sphinx := ("*.html" | "*.png" | "*.js" | "*.css" | "*.gif" | "*.txt")
-  ))
+  )).configs(DocTest).settings(inConfig(DocTest)(Defaults.testSettings): _*).settings(
+    unmanagedSourceDirectories in DocTest <+= baseDirectory { _ / "src/sphinx/code" },
+    resourceDirectory in DocTest <<= baseDirectory { _ / "src/test/resources" }
+    //test in ThisBuild <<= Seq(test in Test, test in DocTest).dependOn
+  )
+
+  /* Test Configuration for running tests on doc sources */
+  lazy val DocTest = config("doctest") extend(Test)
 
   /* Split tests into a group that needs to be forked and another one that can run in-process */
   def partitionTests(tests: Seq[TestDefinition]) = {
