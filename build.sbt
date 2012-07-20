@@ -1,27 +1,15 @@
-name := "SLICK"
+version in ThisBuild := "0.11.0-SNAPSHOT"
 
-organizationName := "Typesafe"
+scalaVersion in ThisBuild := "2.10.0-M5"
 
-organization := "com.typesafe"
+crossScalaVersions in ThisBuild ++= "2.10.0-M4" :: Nil
+//crossVersion in ThisBuild := CrossVersion.Disabled
 
-version := "0.11.0-SNAPSHOT"
+//scalaHome in ThisBuild := Some(file("C:/Users/szeiger/code/scala/build/pack"))
 
-//scalaVersion := "2.10.0-unknown-unknown"
-//scalaVersion := "2.10.0-SNAPSHOT"
-scalaVersion := "2.10.0-M5"
+//autoScalaLibrary in ThisBuild := false
 
-resolvers += Resolver.sonatypeRepo("snapshots")
-
-crossScalaVersions ++= "2.10.0-M4" :: Nil
-//crossVersion := CrossVersion.Disabled
-
-//scalaHome := Some(file("C:/Users/szeiger/code/scala/build/pack"))
-
-//autoScalaLibrary := false
-
-scalacOptions ++= List("-deprecation", "-feature")
-
-libraryDependencies ++= Seq(
+libraryDependencies in ThisBuild ++= Seq(
   "com.h2database" % "h2" % "1.3.166" % "test",
   "org.xerial" % "sqlite-jdbc" % "3.6.20" % "test",
   "org.apache.derby" % "derby" % "10.9.1.0" % "test",
@@ -35,59 +23,6 @@ libraryDependencies ++= Seq(
 )
 
 // Add scala-compiler dependency for scala.reflect.internal
-libraryDependencies <+= scalaVersion(
+libraryDependencies in ThisBuild <+= scalaVersion(
   "org.scala-lang" % "scala-compiler" % _
 )
-
-// Run the Queryable tests (which need macros) on a forked JVM
-// to avoid classloader problems with reification
-testGrouping <<= definedTests in Test map partitionTests
-
-parallelExecution in Test := false
-
-logBuffered := false
-
-testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v", "-s", "-a")
-
-publishTo <<= (repoKind)(r => Some(Resolver.file("test", file("c:/temp/repo/"+r))))
-/*publishTo <<= (repoKind){
-  case "snapshots" => Some("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
-  case "releases" =>  Some("releases"  at "https://oss.sonatype.org/service/local/staging/deploy/maven2")
-}*/
-
-publishMavenStyle := true
-
-publishArtifact in Test := false
-
-pomIncludeRepository := { _ => false }
-
-description := "A type-safe database API for Scala"
-
-homepage := Some(url("https://github.com/slick/slick/wiki"))
-
-startYear := Some(2008)
-
-licenses += ("Two-clause BSD-style license", url("http://github.com/slick/slick/blob/master/LICENSE.txt"))
-
-pomExtra :=
-  <developers>
-    <developer>
-      <id>szeiger</id>
-      <name>Stefan Zeiger</name>
-      <timezone>+1</timezone>
-      <url>http://szeiger.de</url>
-    </developer>
-    <developer>
-      <id>cvogt</id>
-      <name>Jan Christopher Vogt</name>
-      <timezone>+1</timezone>
-      <url>https://github.com/cvogt/</url>
-    </developer>
-  </developers>
-  <scm>
-    <url>git@github.com:slick/slick.git</url>
-    <connection>scm:git:git@github.com:slick/slick.git</connection>
-  </scm>
-
-// Work around scaladoc problem
-unmanagedClasspath in Compile += Attributed.blank(new java.io.File("doesnotexist"))

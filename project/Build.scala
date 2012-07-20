@@ -6,17 +6,80 @@ import com.jsuereth.sbtsite.SitePlugin.site
 
 object SLICKBuild extends Build {
 
-  /* Custom Settings */
+  /** Settings for all projects */
+  lazy val commonSettings = Seq[Setting[_]](
+    resolvers += Resolver.sonatypeRepo("snapshots"),
+    scalacOptions ++= List("-deprecation", "-feature"),
+    // Run the Queryable tests (which need macros) on a forked JVM
+    // to avoid classloader problems with reification
+    testGrouping <<= definedTests in Test map partitionTests,
+    parallelExecution in Test := false,
+    //concurrentRestrictions += Tags.limitSum(1, Tags.Test, Tags.ForkedTestGroup),
+    concurrentRestrictions += Tags.limit(Tags.Test, 1),
+    logBuffered := false,
+    testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v", "-s", "-a"),
+    publishTo <<= (repoKind)(r => Some(Resolver.file("test", file("c:/temp/repo/"+r)))),
+    /*publishTo <<= (repoKind){
+      case "snapshots" => Some("snapshots" at "https://oss.sonatype.org/content/repositories/snapshots")
+      case "releases" =>  Some("releases"  at "https://oss.sonatype.org/service/local/staging/deploy/maven2")
+    },*/
+    publishMavenStyle := true,
+    pomIncludeRepository := { _ => false },
+    // Work around scaladoc problem
+    unmanagedClasspath in Compile += Attributed.blank(new java.io.File("doesnotexist")),
+    repoKind <<= (version)(v => if(v.trim.endsWith("SNAPSHOT")) "snapshots" else "releases"),
+    makePomConfiguration ~= { _.copy(configurations = Some(Seq(Compile, Runtime))) },
+    includeFilter in Sphinx := ("*.html" | "*.png" | "*.js" | "*.css" | "*.gif" | "*.txt")
+  )
+
+  /* Custom Setting Keys */
   val repoKind = SettingKey[String]("repo-kind", "Maven repository kind (\"snapshots\" or \"releases\")")
 
-  /* Project Definition */
-  lazy val root = Project(id = "slick", base = file("."),
-    settings = Project.defaultSettings ++ fmppSettings ++ site.settings ++ site.sphinxSupport() ++ Seq(
-      repoKind <<= (version)(v => if(v.trim.endsWith("SNAPSHOT")) "snapshots" else "releases"),
-      scalacOptions in doc <++= (version).map(v => Seq("-doc-title", "SLICK", "-doc-version", v)),
-      makePomConfiguration ~= { _.copy(configurations = Some(Seq(Compile, Runtime))) },
-      includeFilter in Sphinx := ("*.html" | "*.png" | "*.js" | "*.css" | "*.gif" | "*.txt")
-  ))
+  /* Project Definitions */
+  lazy val aRootProject = Project(id = "root", base = file("."),
+    settings = Project.defaultSettings ++ commonSettings ++ Seq(
+      target := file("target/root"),
+      sourceDirectory := file("target/root-src"),
+      publishArtifact := false
+    )).aggregate(slickProject, slickDocsProject)
+  lazy val slickDocsProject = Project(id = "docs", base = file("slick-docs"),
+    settings = Project.defaultSettings ++ commonSettings ++ Seq(
+      publishArtifact := false,
+      sourceDirectory in Compile := file("src/sphinx"),
+      resourceDirectory in Test := file("src/test/resources")
+    )) dependsOn slickProject
+  lazy val slickProject = Project(id = "main", base = file("."),
+    settings = Project.defaultSettings ++ commonSettings ++ fmppSettings ++ site.settings ++ site.sphinxSupport() ++ Seq(
+      target := file("target/main"),
+      publishArtifact in Test := false,
+      name := "SLICK",
+      organizationName := "Typesafe",
+      organization := "com.typesafe",
+      description := "A type-safe database API for Scala",
+      homepage := Some(url("https://github.com/slick/slick/wiki")),
+      startYear := Some(2008),
+      licenses += ("Two-clause BSD-style license", url("http://github.com/slick/slick/blob/master/LICENSE.txt")),
+      pomExtra :=
+        <developers>
+          <developer>
+            <id>szeiger</id>
+            <name>Stefan Zeiger</name>
+            <timezone>+1</timezone>
+            <url>http://szeiger.de</url>
+          </developer>
+          <developer>
+            <id>cvogt</id>
+            <name>Jan Christopher Vogt</name>
+            <timezone>+1</timezone>
+            <url>https://github.com/cvogt/</url>
+          </developer>
+        </developers>
+        <scm>
+          <url>git@github.com:slick/slick.git</url>
+          <connection>scm:git:git@github.com:slick/slick.git</connection>
+        </scm>,
+      scalacOptions in doc <++= (version).map(v => Seq("-doc-title", "SLICK", "-doc-version", v))
+    ))
 
   /* Split tests into a group that needs to be forked and another one that can run in-process */
   def partitionTests(tests: Seq[TestDefinition]) = {
