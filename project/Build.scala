@@ -18,8 +18,10 @@ object SLICKBuild extends Build {
       includeFilter in Sphinx := ("*.html" | "*.png" | "*.js" | "*.css" | "*.gif" | "*.txt")
   )).configs(DocTest).settings(inConfig(DocTest)(Defaults.testSettings): _*).settings(
     unmanagedSourceDirectories in DocTest <+= baseDirectory { _ / "src/sphinx/code" },
-    resourceDirectory in DocTest <<= baseDirectory { _ / "src/test/resources" }
-    //test in ThisBuild <<= Seq(test in Test, test in DocTest).dependOn
+    resourceDirectory in DocTest <<= baseDirectory { _ / "src/test/resources" },
+    test <<= Seq(test in Test, test in DocTest).dependOn,
+    //concurrentRestrictions += Tags.limitSum(1, Tags.Test, Tags.ForkedTestGroup)
+    concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
   )
 
   /* Test Configuration for running tests on doc sources */

@@ -43,9 +43,11 @@ libraryDependencies <+= scalaVersion(
 // to avoid classloader problems with reification
 testGrouping <<= definedTests in Test map partitionTests
 
+testGrouping in DocTest <<= definedTests in DocTest map partitionTests
+
 parallelExecution in Test := false
 
-logBuffered := false
+logBuffered in Global := false
 
 testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v", "-s", "-a")
 
