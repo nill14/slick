@@ -6,83 +6,72 @@ import scala.slick.session._
 import org.junit.Test
 import org.junit.Assert._
 import com.typesafe.slick.testkit.util.TestDB
+import scala.slick.driver.ExtendedProfile
 
-object MigrationsTest extends DBTestObject(H2Mem)//, H2Disk, SQLiteMem, SQLiteDisk, Postgres, MySQL, DerbyMem, DerbyDisk, HsqldbMem, MSAccess, SQLServer)
+object MigrationsTest extends DBTestObject(H2Mem, H2Disk, /*SQLiteMem, SQLiteDisk,*/ Postgres, MySQL, DerbyMem, DerbyDisk, HsqldbMem, MSAccess, SQLServer)
 class MigrationsTest(val tdb: TestDB) extends DBTest {
+  import tdb.profile._
+  import tdb.profile.Implicit._
+  object Tasks extends Table[(Int,String)]("tasks"){
+    def id = column[Int]("id",O.PrimaryKey)
+    def name = column[String]("name")
+    def * = id ~ name
+  }
+  class MigrationTestException extends Exception
   @Test def testMigrations() {
-    db.withSession{
-      session:Session =>
-    import tdb.driver._
-    var applied : List[Migration] = List()
-    object Tasks extends Table[(Int,String)]("tasks"){
-      def id = column[Int]("id",O.PrimaryKey)
-      def name = column[String]("name")
-      def * = id ~ name
-    }
-    val m = new SlickMigrationManager(
-      List(
-        new Migration( "m1" ){
-          def up   {}
-          def down {}
-        }
-        ,new Migration( "m2" ){
-          def up   {}
-          def down {}
-        }
-        ,new Migration( "m3" ){
-          def up   {}
-          def down {}
-        }
-        ,new Migration( "m4" ){
-          def up   {}
-          def down {}
-        }
+    db.withSession{ implicit session:Session =>
+      val events = new collection.mutable.MutableList[String]
+      implicit val d = tdb.profile
+      val m = new MigrationManager(
+        List(
+          upTo( 1 ){
+            events += "a"
+            Tasks.ddl.create
+          },
+          upTo( 2 ){
+            events += "b"
+            Tasks.insertAll(
+              (1, "Task 1"),
+              (2, "Task 2")
+            )
+          },
+          upTo( 3 ){
+            Tasks.insertAll(
+              (3, "Task 3"),
+              (4, "Task 4")
+            )
+            events += "c"
+            throw new MigrationTestException // break transaction
+          },
+          upTo( 4 ){
+            Tasks.insertAll(
+              (5, "Task 5"),
+              (6, "Task 6")
+            )
+          }
+        )
       )
-    )(session,tdb.driver){
-      override protected def lastMigration_=(value:Migration){
-        super.lastMigration_= (value)
-        println("Set last to '"+lastMigration.id+"'")
+      
+      // test transactions
+      m.initialize
+      assertEquals( m.lastApplied, m.initial )
+      try{
+        m.upgradeTo(3)
+        fail()
+      }catch{
+        case _:MigrationTestException => 
       }
-      override def up( to:Migration ){
-        print( "Upgrading '"+to.id+"' ... ")
-        super.up(to)
-        applied = applied :+ to
-        println("done!")
-      }
-      override def down( to:Migration ){
-        print( "Downgrading '"+to.id+"' ... ")
-        super.down(to)
-        applied = applied.reverse.drop(1).reverse
-        println("done!")
-      }
+      // make sure all 3 migrations were executed
+      assertEquals( events, List("a","b","c") )
+
+      // make sure only the first two migrations affected the db (as the third had an exception)
+      assertEquals( Tasks.sortBy(_.id).list, List((1,"Task 1"),(2,"Task 2")) )
+
+      // make sure the the lastApplied 
+      assertEquals( 2, m.currentVersion )
+      
+      // test passing invalid version numbers
+      // TODO
     }
-    m.initialize
-    
-    assertEquals( m.lastApplied, m.initial )
-    m.upgradeTo("m3")
-    assertEquals( m.lastApplied, m.byName("m3") )
-    assertEquals( applied.length, 3 )
-    
-    m.downgradeTo("m1")
-    assertEquals( m.lastApplied, m.byName("m1") )
-    assertEquals( applied.length, 1 )
-
-    m.upgradeTo("m3")
-    assertEquals( applied.length, 3 )
-
-    try{
-      m.downgradeTo("m4")
-      assert(false)
-    } catch{ case e:Exception => () }
-    assertEquals( applied.length, 3 )
-    
-    m.downgradeTo(m.initial)
-    assertEquals( applied.length, 0 )
-
-    try{
-      m.upgradeTo("fooooo")
-      assert(false)
-    } catch{ case e:Exception => () }
-    
-}}
+  }
 }

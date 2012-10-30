@@ -1,11 +1,11 @@
 package scala.slick.migrations
-import scala.slick.migrations._
 import scala.slick.session.Session
 import scala.slick.driver._
 import scala.slick.lifted.Query
-class SlickMigrationManager( protected val migrations:List[Migration], slickConfigTable:String="__slick_migrations__" )
-                           (implicit session:Session, driver:ExtendedDriver)
-                           extends NamedMigrationManagerBase[Migration]{
+class MigrationManager( migrations:List[UpMigration], slickConfigTable:String="__slick_migrations__" )
+                           (implicit session:Session, driver:ExtendedProfile)
+                           extends base.VersionedMigrationManager[UpMigration](migrations){
+  override lazy val initial = new UpMigration(0){ def up = throw new Exception("this should never happen") }
 //  import scala.slick.driver.H2Driver.simple._ // FIXME how to get rid of this line
   import driver.Implicit._
   private object SlickConfig extends driver.Table[(String,String)](slickConfigTable){
@@ -13,21 +13,38 @@ class SlickMigrationManager( protected val migrations:List[Migration], slickConf
     def value = column[String]("value")
     def * = key ~ value
   }
-  lazy val initial = new Migration("__initial_migration__"){ 
-    def up = {}
-    def down = { throw new Exception("This should never happen. There is a bug.") }
-  }
   def initialize = {
     SlickConfig.ddl.create
     SlickConfig.insertAll(
-      ("migration",initial.id)
+      ("version","0")
     )
   }
-  protected def lastMigration_=(value:Migration){
-    Query(SlickConfig).filter(_.key==="migration").mutate( m => m.row = (m.row._1,value.id) )
+  override protected def up( migration : UpMigration ) = {
+    session.withTransaction{
+      super.up(migration)
+    }
+  }
+  protected def lastMigration_=(value:UpMigration){
+    Query(SlickConfig).filter(_.key==="version").mutate( m => m.row = (m.row._1,value.version.toString) )
   }
   protected def lastMigration = 
-    byName( SlickConfig.filter(_.key==="migration").map(_.value).first )
+    byVersion( SlickConfig.filter(_.key==="version").map(_.value).first.toInt )
   
-  def lastApplied = lastMigration 
+  def lastApplied = lastMigration
+  def currentVersion = lastMigration.version
 }
+abstract class UpMigration(version:Int)(implicit session:Session) extends base.Migration(version){
+  /**
+   * This method contains the actual code for this migration (database queries, etc.). It needs to be defined in a subclass.
+   */
+  def up
+}
+protected class UpMigrationFactory{
+  /**
+   * @param migration A function performing the actual migration.
+   */
+  def apply( version :Int )( migration: =>Unit )(implicit session:Session) = new UpMigration(version){
+    def up = migration
+  }
+}
+object upTo extends UpMigrationFactory
