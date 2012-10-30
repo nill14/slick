@@ -57,7 +57,7 @@ class MigrationsTest(val tdb: TestDB) extends DBTest {
       assertEquals( m.lastApplied, m.initial )
       try{
         m.upgradeTo(3)
-        fail()
+        fail("exception in upgrade suppressed")
       }catch{
         case _:MigrationTestException => 
       }
@@ -71,7 +71,13 @@ class MigrationsTest(val tdb: TestDB) extends DBTest {
       assertEquals( 2, m.currentVersion )
       
       // test passing invalid version numbers
-      // TODO
+      for( l <- List( List(-1), List(2,2), List(3,2) ))
+        try{
+          new MigrationManager( l.map(x => upTo(x){}) )
+          fail("invalid version number not caught")
+        }catch{
+          case _: base.InvalidVersionNumbers => 
+        }
     }
   }
 }

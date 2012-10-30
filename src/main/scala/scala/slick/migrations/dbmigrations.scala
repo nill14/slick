@@ -4,8 +4,10 @@ import scala.slick.driver._
 import scala.slick.lifted.Query
 class MigrationManager( migrations:List[UpMigration], slickConfigTable:String="__slick_migrations__" )
                            (implicit session:Session, driver:ExtendedProfile)
-                           extends base.VersionedMigrationManager[UpMigration](migrations){
-  override lazy val initial = new UpMigration(0){ def up = throw new Exception("this should never happen") }
+                           extends base.VersionedMigrationManager[UpMigration](
+                               new UpMigration(0){ def up = throw new Exception("this should never happen") },
+                               migrations
+  ){
 //  import scala.slick.driver.H2Driver.simple._ // FIXME how to get rid of this line
   import driver.Implicit._
   private object SlickConfig extends driver.Table[(String,String)](slickConfigTable){
@@ -33,7 +35,7 @@ class MigrationManager( migrations:List[UpMigration], slickConfigTable:String="_
   def lastApplied = lastMigration
   def currentVersion = lastMigration.version
 }
-abstract class UpMigration(version:Int)(implicit session:Session) extends base.Migration(version){
+abstract class UpMigration(version:Int) extends base.Migration(version){
   /**
    * This method contains the actual code for this migration (database queries, etc.). It needs to be defined in a subclass.
    */
@@ -43,8 +45,11 @@ protected class UpMigrationFactory{
   /**
    * @param migration A function performing the actual migration.
    */
-  def apply( version :Int )( migration: =>Unit )(implicit session:Session) = new UpMigration(version){
+  def apply( version :Int )( migration: =>Unit ) = new UpMigration(version){
     def up = migration
   }
 }
 object upTo extends UpMigrationFactory
+
+class InvalidVersionNumbers extends base.InvalidVersionNumbers
+class NoMigrationPathFound extends base.NoMigrationPathFound
