@@ -6,15 +6,29 @@ import scala.slick.jdbc.meta.CodeGen
 import sys.process._
 import java.io.File
 
-class Schema( schema:reflect.Schema, package_ :String )(implicit session:Session) extends GeneratorBase{
+
+class Schema( driver:String, schema:reflect.Schema, package_ :String )(implicit session:Session) extends GeneratorBase{
   val s = schema
   def table(t:reflect.Table) = new Table(this,t) 
   def tables : List[Table] = s.tables.map(table _)
-  def render : String = render(tables).mkString(lineBreak+lineBreak)
-  def renderBase = tables.map(_.renderBase).mkString(lineBreak)
-  def renderConcrete = tables.map(_.renderConcrete).mkString(lineBreak)
-  def concretePackage = package_
-  def basePackage = package_ +".base"
+  def driverImport = "import scala.slick.driver."+driver+"Driver.simple._" 
+  def render = driverImport + lineBreak + s"""
+package ${baseTablePackage}{
+${indent(tables.map(_.renderBaseTable).mkString(lineBreak))}
+}
+package ${concreteTablePackage}{
+${indent(tables.map(_.renderConcreteTable).mkString(lineBreak))}
+}
+package ${entitiesPackage}{
+${indent(tables.map(_.renderEntity).mkString(lineBreak))}
+}
+""".trim()//+lineBreak+("-"*80)+lineBreak+tables.map(t => CodeGen.output2(t.table.t)).mkString(lineBreak+lineBreak)
+  def renderBaseTables = tables.map(_.renderBaseTable).mkString(lineBreak)
+  def renderConcreteTables = tables.map(_.renderConcreteTable).mkString(lineBreak)
+  def renderEntities = tables.map(_.renderEntity).mkString(lineBreak)
+  def entitiesPackage = package_ + ".entities"
+  def baseTablePackage = package_ +".tables"+".base"
+  def concreteTablePackage = package_ +".tables"
   private def dump( code:String, srcFolder:String, package_ :String, fileName:String ) {
     assert( new File(srcFolder).exists() )
     val folder : String = srcFolder + "/" + (package_.replace(".","/")) + "/"
@@ -22,16 +36,18 @@ class Schema( schema:reflect.Schema, package_ :String )(implicit session:Session
     code.#>(new File( folder+fileName )).!
   } 
   def singleFile( srcFolder:String, fileName:String="" ) {
-    dump( render, srcFolder, package_, if(fileName != "") fileName else "entities.scala" )
+    dump( render, srcFolder, package_, if(fileName != "") fileName else "schema.scala" )
   }
-  def twoFiles( srcFolder:String, concreteFileName:String="", baseFileName:String="" ) {
-    dump( renderBase, srcFolder, concretePackage, if(concreteFileName != "") concreteFileName else "entities.scala" )
-    dump( renderConcrete, srcFolder, basePackage, if(baseFileName != "") baseFileName else "entities.scala" )
+  def fewFiles( srcFolder:String, concreteTablesFileName:String="", baseTablesFileName:String="", entitiesFileName:String="" ) {
+    dump( driverImport + lineBreak + renderBaseTables, srcFolder, concreteTablePackage, if(concreteTablesFileName != "") concreteTablesFileName else "tables.scala" )
+    dump( renderConcreteTables, srcFolder, baseTablePackage, if(baseTablesFileName != "") baseTablesFileName else "tables.scala" )
+    dump( renderEntities, srcFolder, entitiesPackage, if(entitiesFileName != "") entitiesFileName else "entities.scala" )
   }
-  def manyFiles( srcFolder:String, concreteFileName:String="", baseFileName:String="" ) {
+  def manyFiles( srcFolder:String ) {
     tables.foreach{ table =>
-      dump( table.renderConcrete, srcFolder, concretePackage, if(concreteFileName != "") concreteFileName else table.scalaName+".scala" )
-      dump( table.renderBase, srcFolder, basePackage, if(baseFileName != "") baseFileName else table.scalaName+".scala" )
+      dump( table.renderEntity, srcFolder, entitiesPackage, table.scalaName+".scala" )
+      dump( table.renderConcreteTable, srcFolder, concreteTablePackage, table.scalaName+".scala" )
+      dump( driverImport + lineBreak + table.renderBaseTable, srcFolder, baseTablePackage, table.entityName+".scala" )
     }
   }
 }
@@ -51,12 +67,12 @@ class Column( table:Table,column:reflect.Column ) extends GeneratorBase{
   val t = table
   val c = column
   def _scalaType = scalaType(c.sqlType)
-  def scalaType : String = c.nullable.filter(x=>x).map( _=>"Option[${_scalaType}]" ).getOrElse(_scalaType)
+  def scalaType : String = c.nullable.filter(x=>x).map( _=>s"Option[${_scalaType}]" ).getOrElse(_scalaType)
   def scalaName : String = scalaName(name,false)
   def name = c.name
-  def columnSize = c.columnSize.map("(${_})").getOrElse("")
-  def tpe(name:String) = """
-    DBType "${name}"${columnSize}
+  def columnSize = c.columnSize.map(s=>s"(${s})").getOrElse("")
+  def tpe(name:String) = s"""
+    DBType "${name}${columnSize}"
    """.trim()
   def types = c.sqlTypeName.map( tpe _ )
   def autoIncrement = c.autoInc.filter(x=>x).map(_=>"AutoInc")
@@ -64,7 +80,7 @@ class Column( table:Table,column:reflect.Column ) extends GeneratorBase{
   def flags = (autoIncrement ++ primaryKey)
   def options = commas( (types ++ flags).map("O "+_) )
   def render = s"""
-    def ${name} = column[${scalaType}]("${name}"${options})
+    def ${scalaName} = column[${scalaType}]("${name}", ${options})
   """.trim()
 }
 
@@ -73,26 +89,40 @@ class Table (val schema:Schema,val table:reflect.Table)(implicit session:Session
   val t = table
   def name = t.name
   def scalaName : String = scalaName(name)
+  def entityName : String = scalaName(name)
+  def entityFullyQualifiedName : String = s.entitiesPackage+"."+entityName
   def column(c:reflect.Column) = new Column(this,c)
   def columns = t.columns.map(column _)
   def star = "def * = " + columns.map(_.scalaName).mkString(" ~ ")
-  def types = ""
+  def mappedToFullyQualified = Some(entityFullyQualifiedName)
+  def importEntity = mappedToFullyQualified.map("import "+_)
+  def mappedToClassName = Some(entityName)
+  def factory = mappedToClassName.get
+  def extractor = mappedToClassName.get+".unapply _"
+  def mapping = mappedToClassName.map(_=>s"<> (${factory}, ${extractor})").getOrElse("")
+  def types = mappedToClassName.getOrElse(
+    if(columns.length == 1) columns(0).scalaType
+    else "("+columns.map(_.scalaType).mkString(",")+")" 
+  )
   def foreignKeys = "" //many(foreignKey(key))
   def constraints = ""
   def render = s"""
-package ${s.basePackage}{
-${indent(renderBase)}
+package ${s.entitiesPackage}{
+${indent(renderEntity)}
 }
-package ${s.concretePackage}{
-${indent(renderConcrete)}
+package ${s.baseTablePackage}{
+${indent(renderBaseTable)}
+}
+package ${s.concreteTablePackage}{
+${indent(renderConcreteTable)}
 }
 """
-  def renderBase = s"""
-trait ${scalaName} extends Table[${types}](name){
+  def renderBaseTable = importEntity.map(_+lineBreak).getOrElse("")+s"""
+abstract class ${scalaName} extends Table[${types}]("${name}"){
   // columns
 ${indent(columns)}
 
-  ${star}
+  ${star} ${mapping}
   
   // foreign keys
   ${foreignKeys}
@@ -102,20 +132,11 @@ ${indent(columns)}
   
   
 }
-      """.trim()
-  def renderConcrete = s"""
-class ${scalaName} extends ${s.basePackage}.${scalaName}
-"""
+    """.trim()
+  def renderConcreteTable = s"""
+object ${scalaName} extends ${s.baseTablePackage}.${scalaName}
+    """.trim()
+  def renderEntity = s"""
+case class ${entityName}( ${columns.map(c=>c.name+" :"+c.scalaType).mkString(", ")} )
+    """.trim()
 }
-/*
-    val pkeys = table.getPrimaryKeys.mapResult(k => (k.column, k)).list.toMap
-    if(!columns.isEmpty) {
-      out.print("object "+mkScalaName(table.name.name)+" extends Table[")
-      if(columns.tail.isEmpty) out.print(scalaTypeFor(columns.head))
-      else out.print("(" + columns.map(c => scalaTypeFor(c)).mkString(", ") + ")")
-      out.println("](\""+table.name.name+"\") {")
-      for(c <- columns) output(c, pkeys.get(c.column), out)
-      out.println("  def * = " + columns.map(c => mkScalaName(c.column, false)).mkString(" ~ "))
-      out.println("}")
-    }
-*/

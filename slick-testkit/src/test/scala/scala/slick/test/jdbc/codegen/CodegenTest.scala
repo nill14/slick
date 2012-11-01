@@ -12,6 +12,9 @@ import scala.slick.testutil._
 import scala.slick.testutil.TestDBs._
 import com.typesafe.slick.testkit.util.TestDB
 import scala.slick.jdbc
+import scala.slick.jdbc.reflect.Table
+import scala.slick.jdbc.codegen
+import scala.slick.jdbc.reflect
 
 object CodegenTest extends DBTestObject(H2Mem)//, SQLiteMem, Postgres, MySQL, DerbyMem, HsqldbMem, SQLServer)
 
@@ -44,12 +47,23 @@ class CodegenTest(val tdb: TestDB) extends DBTest {
       for(s <- ddl.createStatements) println("  "+s)
       ddl.create
       
-      val generator = new scala.slick.jdbc.codegen.Schema(
+      class MyTableGen (schema:codegen.Schema,table:reflect.Table) extends codegen.Table(schema, table){
+        override def entityName = Map(
+          "users" -> "User",
+          "orders" -> "Order"
+        )(name)
+      }
+      
+      val generator = new codegen.Schema(
+        "H2",
         new scala.slick.jdbc.reflect.Schema((List("users","orders"))),
-        "foo.entities"
-      )
+        "foo.schema"
+      ){
+        override def table( t:reflect.Table ) = new MyTableGen(this,t)
+      }
       
       println( generator.render )
+      generator.singleFile("D:\\work\\slick\\src\\main\\scala")
     }
   }
 }
