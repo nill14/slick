@@ -262,7 +262,13 @@ class FuseComprehensions extends Phase {
               val c3 = ensureStruct(c2)
               // All standard aggregate functions operate on a single column
               val Some(Pure(StructNode(Seq((f2, _))))) = c3.select
-              (c3, Apply(s, Seq(Select(Ref(a2), f2))))
+              val elType = c3.nodeType match {
+                case CollectionType(_, el) => el
+                case NoType => NoType
+                case UnassignedType => NoType
+                case t => throw new SlickException("Source of aggregation must have a collection type (found type "+t+" in "+c3+")")
+              }
+              (c3, Apply(s, Seq(Select(Ref(a2), f2)))(elType))
           }
           a -> Comprehension(from = Seq(a2 -> c2b),
             select = Some(Pure(StructNode(IndexedSeq(f -> call)))))

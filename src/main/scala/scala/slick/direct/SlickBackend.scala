@@ -95,11 +95,14 @@ class SlickBackend( val driver: JdbcDriver, mapper:Mapper ) extends QueryableBac
   }
 
   def typetagToQuery(typetag:TypeTag[_]) : Query = {
-    val table = new sq.TableNode with sq.NullaryNode with sq.WithOp {
+    val table = new sq.TableNode with sq.WithOp with sq.TypedNode {
+      val schemaName = None
       val tableName = mapper.typeToTable( typetag.tpe )
       def columns = getConstructorArgs( typetag.tpe ).map{extractColumn(_,sq.Node(this))} // use def here, not val, so expansion is still correct after cloning
 
       def nodeShaped_* = ShapedValue(sq.ProductNode(columns), Shape.selfLinearizingShape.asInstanceOf[Shape[sq.ProductNode, Any, _]])
+      def tpe = sq.CollectionType(sq.CollectionTypeConstructor.default, sq.ProductType(columns.map(_.asInstanceOf[sq.Typed].tpe).toIndexedSeq))
+      override def nodeWithComputedType(scope: sq.SymbolScope): sq.Node = nodeRebuild
     }
     new Query( table, Scope() )
   }
