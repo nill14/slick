@@ -216,6 +216,7 @@ class SlickBackend( val driver: JdbcDriver, mapper:Mapper ) extends QueryableBac
               val sq_rhs = s2sq(body, new_scope).node
               new Query( term.decoded match {
                 case "filter"     => sq.Filter( sq_symbol, sq_lhs, sq_rhs )
+                case "sortBy"     => sq.SortBy( sq_symbol, sq_lhs, Seq((sq_rhs,sq.Ordering(sq.Ordering.Asc))) )
                 case "map"        => sq.Bind( sq_symbol, sq_lhs, sq.Pure(sq_rhs) )
                 case "flatMap"    => sq.Bind( sq_symbol, sq_lhs, sq_rhs )
                 case e => throw new UnsupportedMethodException( scala_lhs.tpe.erasure+"."+term.decoded )
