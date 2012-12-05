@@ -1,4 +1,5 @@
 package scala.slick.test.direct
+import scala.slick.direct.order._
 
 import scala.language.{reflectiveCalls,implicitConversions}
 import org.junit.Test
@@ -295,6 +296,44 @@ class QueryableTest(val tdb: TestDB) extends DBTest {
         query.sortBy(_.name)
         ,inMem.sortBy(_.name)
       )
+      
+      assertMatchOrdered(
+        query.sortBy(reversed(_.name))
+        ,inMem.sortBy(reversed(_.name))
+      )
     }
+  }
+  @Test def sortingTest(){
+//    def assertEquals[T]( a:T, b:T ) = assert( a == b)
+    val cA0 = Coffee("A",0) 
+    val cA1 = Coffee("A",1) 
+    val cB0 = Coffee("B",0) 
+    val cB1 = Coffee("B",1) 
+    val coffees = List( cA1, cB0, cA0, cB1 )
+    assertEquals(
+      List(cA1,cA0,cB0,cB1),
+      coffees.sortBy(_.name)
+    )
+    assertEquals(
+      List(cA1,cA0,cB0,cB1),
+      coffees.sortBy(_.name)
+    )
+    assertEquals(
+      List(cB0,cB1,cA1,cA0),
+      coffees.sortBy(c=>reversed(c.name))
+    )
+    assertEquals(
+      List(cA1,cA0,cB1,cB0),
+      coffees.sortBy(c => (c.name,reversed(c.sales)))
+    )
+    //assertEquals( coffees.sortBy(_.name,asc), by(_.sales,desc) ), List(cA1,cA0,cB1,cB0) )
+    assertEquals(
+      List(cA1,cA0,cB1,cB0),
+      coffees.sortBy( c => (
+        c.name
+        ,reversed(c.sales)
+        ,reversed(c.sales)
+      ))
+    )
   }
 }

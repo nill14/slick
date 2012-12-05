@@ -1,6 +1,7 @@
 package scala.slick.direct
 
 import scala.language.experimental.macros
+import scala.language.higherKinds
 
 import scala.reflect.macros.Context
 import scala.slick.SlickException
@@ -10,6 +11,29 @@ import scala.reflect.ClassTag
 
 abstract class BaseQueryableFactory{
   //def factory[S]( projection:ru.Expr[BaseQueryable[S]] ) : BaseQueryable[S]  
+}
+
+/*class OrderBase{
+  type Reversed[T]
+  def reversed[T](t:T) : Reversed[T] = t.asInstanceOf[Reversed[T]]
+  
+  //private def reversedOrdering[T](implicit ordering:Ordering[T]) : Ordering[Reversed[T]] = ordering.reverse
+  implicit def reversedOrdering[T](implicit ordering:Ordering[T]) : Ordering[Reversed[T]] = ordering.reverse.asInstanceOf[Ordering[Reversed[T]]]
+}
+
+object order extends OrderBase{
+  type Reversed[T] = T
+}*/
+
+object order{
+  case class Reversed[T](value:T)// TODO: extends AnyVal
+  def reversed[T](t:T) : Reversed[T] = Reversed(t)
+  
+  private def reversedOrdering[T](implicit ordering:Ordering[T]) : Ordering[Reversed[T]] = new Ordering[Reversed[T]]{
+    def compare( a:Reversed[T], b:Reversed[T] ) = ordering.reverse.compare( a.value, b.value )
+  }
+  implicit val reversedIntOrdering : Ordering[Reversed[Int]] = reversedOrdering[Int]
+  implicit val reversedStringOrdering : Ordering[Reversed[String]] = reversedOrdering[String]
 }
 
 object Queryable extends BaseQueryableFactory{
