@@ -210,13 +210,18 @@ class SlickBackend( val driver: JdbcDriver, mapper:Mapper ) extends QueryableBac
         =>
           val sq_lhs = s2sq( scala_lhs ).node
           val sq_symbol = new sq.AnonSymbol
+          def flatten( node:sq.Node ) : Seq[(sq.Node,sq.Ordering)] = node match {
+            case sq.ProductNode(nodes) => nodes.flatMap(flatten _)
+            case sq.ReverseNode(node) => Seq( (node,sq.Ordering(sq.Ordering.Desc)) )
+            case node => Seq( (node,sq.Ordering(sq.Ordering.Asc)) )
+          }            
           rhs match {
             case Function( arg::Nil, body ) =>
               val new_scope = scope+(arg.symbol -> sq.Ref(sq_symbol))
               val sq_rhs = s2sq(body, new_scope).node
               new Query( term.decoded match {
                 case "filter"     => sq.Filter( sq_symbol, sq_lhs, sq_rhs )
-                case "sortBy"     => sq.SortBy( sq_symbol, sq_lhs, Seq((sq_rhs,sq.Ordering(sq.Ordering.Asc))) )
+                case "sortBy"     => sq.SortBy( sq_symbol, sq_lhs, flatten(sq_rhs) )
                 case "map"        => sq.Bind( sq_symbol, sq_lhs, sq.Pure(sq_rhs) )
                 case "flatMap"    => sq.Bind( sq_symbol, sq_lhs, sq_rhs )
                 case e => throw new UnsupportedMethodException( scala_lhs.tpe.erasure+"."+term.decoded )
@@ -281,7 +286,11 @@ class SlickBackend( val driver: JdbcDriver, mapper:Mapper ) extends QueryableBac
         case tree if tree.tpe.erasure <:< typeOf[BaseQueryable[_]].erasure
             => val (tpe,query) = toQuery( eval(tree).asInstanceOf[BaseQueryable[_]] ); query
 
-
+        case Apply(
+            Select(_, term),
+            scala_rhs::Nil
+        ) if term.decoded == "reversed" =>
+          sq.ReverseNode( s2sq(scala_rhs).node )
         case tree => throw new Exception( "You probably used currently not supported scala code in a query. No match for:\n" + showRaw(tree) )
       }
     } catch{

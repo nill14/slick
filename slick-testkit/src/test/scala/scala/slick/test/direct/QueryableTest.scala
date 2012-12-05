@@ -298,9 +298,40 @@ class QueryableTest(val tdb: TestDB) extends DBTest {
       )
       
       assertMatchOrdered(
-        query.sortBy(reversed(_.name))
-        ,inMem.sortBy(reversed(_.name))
+        query.sortBy(c => reversed(c.name))
+        ,inMem.sortBy(c => reversed(c.name))
       )
+      
+      assertMatchOrdered(
+        query.sortBy(c => (c.name,reversed(c.sales)))
+        ,inMem.sortBy(c => (c.name,reversed(c.sales)))
+      )
+      
+      assertMatchOrdered(
+        query.sortBy( c => (
+          c.name
+          ,reversed(c.sales)
+          ,reversed(c.sales)
+        ))
+        ,inMem.sortBy( c => (
+          c.name
+          ,reversed(c.sales)
+          ,reversed(c.sales)
+        ))
+      )
+/*
+      assertMatchOrdered(
+        query.sortBy( c => ((
+          c.name
+          ,reversed(c.sales) )
+          ,reversed(c.sales))
+        )
+        ,inMem.sortBy( c => ((
+          c.name
+          ,reversed(c.name))
+          ,reversed(c.sales))
+        )
+      )*/
     }
   }
   @Test def sortingTest(){

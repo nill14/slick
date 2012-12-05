@@ -147,6 +147,15 @@ final case class StructNode(elements: IndexedSeq[(Symbol, Node)]) extends Produc
   }
 }
 
+/** a node for marking reversed columns in sortBy */
+final case class ReverseNode(value: Node) extends UnaryNode {
+  def child = value
+  override def nodeChildNames = Seq("value")
+  protected[this] def nodeRebuild(child: Node) = copy(value = child) // FIXME can we factor this out together with pure? 
+  def nodeWithComputedType(scope: SymbolScope): Node = copy(this).nodeTyped(child.nodeType)
+}
+
+
 /** A literal value expression. */
 trait LiteralNode extends NullaryNode with TypedNode {
   def value: Any
